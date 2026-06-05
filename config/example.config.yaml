@@ -12,7 +12,7 @@ rabbitmq:
   prefetch_count: 5
 
 redis:
-  url: "redis://localhost:6380"   # must include the redis:// scheme (uses redis.ParseURL)
+  url: "redis://localhost:6379"   # must include the redis:// scheme (uses redis.ParseURL)
 
 browserless:
   url: "https://production-sfo.browserless.io"

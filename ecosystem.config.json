@@ -1,0 +1,16 @@
+{
+  "apps": [
+    {
+      "name": "viper",
+      "script": "./bin/viper",
+      "interpreter": "none",
+      "watch": false,
+      "autorestart": true,
+      "max_restarts": 5,
+      "restart_delay": 2000,
+      "log_date_format": "YYYY-MM-DD HH:mm:ss",
+      "out_file": "./logs/viper.out.log",
+      "error_file": "./logs/viper.err.log"
+    }
+  ]
+}
