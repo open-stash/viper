@@ -1,0 +1,29 @@
+server:
+  port: 8082
+  env: local                  # local | dev | prod
+
+rabbitmq:
+  broker_link: "amqp://guest:guest@localhost:5672/"
+  exchange_name: "scrape.exchange"
+  exchange_type: "direct"
+  queue_name: "scrape.jobs"
+  routing_key: "scrape"
+  worker_count: 5
+  prefetch_count: 5
+
+redis:
+  url: "redis://localhost:6380"   # must include the redis:// scheme (uses redis.ParseURL)
+
+browserless:
+  url: "https://production-sfo.browserless.io"
+  token: "your_browserless_token"
+
+s3:
+  region: "blr1"
+  endpoint: "blr1.digitaloceanspaces.com"
+  access_key: "your_access_key"
+  secret_key: "your_secret_key"
+  bucket: "open-stash"
+
+youtube:
+  api_key: "your_youtube_api_key"
