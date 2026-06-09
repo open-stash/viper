@@ -1,5 +1,18 @@
 package youtube
 
+// Content is the unified result the client returns for any supported YouTube
+// resource (video, playlist or channel). The scraper maps it straight onto a
+// ScrapedData — ContentText is pre-assembled per kind so callers don't branch.
+type Content struct {
+	Kind        string // "video" | "playlist" | "channel"
+	Title       string
+	Description string
+	ImageURL    string
+	ContentText string
+	Author      string // channel name (video/playlist) or channel title (channel)
+	PublishedAt string
+}
+
 type VideoData struct {
 	VideoID      string `json:"video_id"`
 	Title        string `json:"title"`
@@ -54,16 +67,46 @@ type contentDetails struct {
 	Duration string `json:"duration"`
 }
 
-type captionListResponse struct {
-	Items []captionItem `json:"items"`
+// ── Playlist ────────────────────────────────────────────────────────────────
+
+type playlistListResponse struct {
+	Items []playlistItem `json:"items"`
 }
 
-type captionItem struct {
-	ID      string             `json:"id"`
-	Snippet captionSnippetData `json:"snippet"`
+type playlistItem struct {
+	ID      string              `json:"id"`
+	Snippet snippetData         `json:"snippet"` // title, description, channelTitle, thumbnails, publishedAt
+	Details playlistContentInfo `json:"contentDetails"`
 }
 
-type captionSnippetData struct {
-	Language string `json:"language"`
-	Name     string `json:"name"`
+type playlistContentInfo struct {
+	ItemCount int `json:"itemCount"`
+}
+
+type playlistItemsResponse struct {
+	Items []playlistEntry `json:"items"`
+}
+
+type playlistEntry struct {
+	Snippet struct {
+		Title string `json:"title"`
+	} `json:"snippet"`
+}
+
+// ── Channel ─────────────────────────────────────────────────────────────────
+
+type channelListResponse struct {
+	Items []channelItem `json:"items"`
+}
+
+type channelItem struct {
+	ID      string       `json:"id"`
+	Snippet snippetData  `json:"snippet"` // title, description, thumbnails, publishedAt
+	Stats   channelStats `json:"statistics"`
+}
+
+type channelStats struct {
+	ViewCount       string `json:"viewCount"`
+	SubscriberCount string `json:"subscriberCount"`
+	VideoCount      string `json:"videoCount"`
 }

@@ -1,6 +1,9 @@
 package engine
 
-import "context"
+import (
+	"context"
+	"errors"
+)
 
 type BrowserResult struct {
 	Title       string
@@ -16,19 +19,24 @@ type Uploader interface {
 	Upload(ctx context.Context, key string, data []byte, contentType string) (string, error)
 }
 
+// ErrYouTubeUnsupported signals a YouTube URL the Data API can't enrich (search,
+// /c/ custom URLs, feeds, private/auto playlists). The scraper treats it as a
+// normal "fall through to the generic pipeline" case rather than a failure.
+var ErrYouTubeUnsupported = errors.New("youtube url not enrichable")
+
 type YouTube interface {
 	IsYouTubeURL(url string) bool
-	GetVideoData(ctx context.Context, url string) (*VideoData, error)
+	GetContent(ctx context.Context, url string) (*YTContent, error)
 }
 
-type VideoData struct {
-	Title        string
-	Description  string
-	ChannelTitle string
-	PublishedAt  string
-	ThumbnailURL string
-	Duration     string
-	ViewCount    string
-	LikeCount    string
-	Transcript   string
+// YTContent is a kind-agnostic YouTube result (video, playlist or channel) with
+// a pre-assembled ContentText.
+type YTContent struct {
+	Kind        string
+	Title       string
+	Description string
+	ImageURL    string
+	ContentText string
+	Author      string
+	PublishedAt string
 }

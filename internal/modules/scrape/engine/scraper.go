@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -27,9 +28,19 @@ func New(b Browser, u Uploader, yt YouTube, h *http.Client) *Scraper {
 }
 
 func (s *Scraper) Scrape(ctx context.Context, targetURL string) (*domain.ScrapedData, error) {
-	// YouTube short-circuit
+	// YouTube short-circuit (video / playlist / channel via the Data API). If the
+	// URL isn't enrichable (search, /c/ custom, feeds, private playlists) or the
+	// API call fails, fall through to the generic pipeline instead of aborting.
 	if s.youtube != nil && s.youtube.IsYouTubeURL(targetURL) {
-		return s.scrapeYouTube(ctx, targetURL)
+		data, err := s.scrapeYouTube(ctx, targetURL)
+		if err == nil {
+			return data, nil
+		}
+		if errors.Is(err, ErrYouTubeUnsupported) {
+			log.Debug().Str("url", targetURL).Msg("YouTube URL not enrichable; using generic scrape")
+		} else {
+			log.Warn().Err(err).Str("url", targetURL).Msg("YouTube scrape failed; falling back to generic scrape")
+		}
 	}
 
 	// 1) Static scrape first

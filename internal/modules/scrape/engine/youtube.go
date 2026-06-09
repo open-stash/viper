@@ -2,45 +2,28 @@ package engine
 
 import (
 	"context"
-	"fmt"
-	"strings"
 
 	domain "github.com/open-stash/viper/internal/domain/scrape"
 )
 
+// scrapeYouTube resolves a YouTube URL (video, playlist or channel) via the Data
+// API. ContentText is assembled per-kind by the adapter, so this just maps the
+// unified result onto ScrapedData. An ErrYouTubeUnsupported (or any other error)
+// is returned to the caller, which falls through to the generic pipeline.
 func (s *Scraper) scrapeYouTube(ctx context.Context, targetURL string) (*domain.ScrapedData, error) {
-	video, err := s.youtube.GetVideoData(ctx, targetURL)
+	c, err := s.youtube.GetContent(ctx, targetURL)
 	if err != nil {
-		return nil, fmt.Errorf("youtube scrape failed: %w", err)
-	}
-
-	// Combine all YouTube data into content_text
-	var contentBuilder strings.Builder
-	contentBuilder.WriteString(fmt.Sprintf("Title: %s\n\n", video.Title))
-	contentBuilder.WriteString(fmt.Sprintf("Channel: %s\n", video.ChannelTitle))
-	contentBuilder.WriteString(fmt.Sprintf("Published: %s\n", video.PublishedAt))
-	if video.Duration != "" {
-		contentBuilder.WriteString(fmt.Sprintf("Duration: %s\n", video.Duration))
-	}
-	if video.ViewCount != "" {
-		contentBuilder.WriteString(fmt.Sprintf("Views: %s\n", video.ViewCount))
-	}
-	if video.LikeCount != "" {
-		contentBuilder.WriteString(fmt.Sprintf("Likes: %s\n", video.LikeCount))
-	}
-	contentBuilder.WriteString(fmt.Sprintf("\nDescription:\n%s\n", video.Description))
-	if video.Transcript != "" {
-		contentBuilder.WriteString(fmt.Sprintf("\nTranscript:\n%s", video.Transcript))
+		return nil, err
 	}
 
 	return &domain.ScrapedData{
 		URL:         targetURL,
-		Title:       video.Title,
-		Description: video.Description,
-		ImageURL:    video.ThumbnailURL,
+		Title:       c.Title,
+		Description: c.Description,
+		ImageURL:    c.ImageURL,
 		SiteName:    "YouTube",
-		ContentText: contentBuilder.String(),
-		Author:      video.ChannelTitle,
-		PublishedAt: video.PublishedAt,
+		ContentText: c.ContentText,
+		Author:      c.Author,
+		PublishedAt: c.PublishedAt,
 	}, nil
 }

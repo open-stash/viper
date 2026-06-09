@@ -32,8 +32,11 @@ func Init(cfg *config.Config) *zerolog.Logger {
 			Out:        os.Stdout,
 			TimeFormat: time.RFC3339,
 			NoColor:    false, // Enable colors
+			// Only list parts that are actually set; zerolog renders any unlisted
+			// part (e.g. "service"/"err") as %!s(<nil>). The error field is keyed
+			// "error" and renders inline after the message as a normal field.
 			PartsOrder: []string{
-				"time", "level", "caller", "service", "env", "message", "err",
+				"time", "level", "caller", "env", "message",
 			},
 			FormatLevel: func(i any) string {
 				return strings.ToUpper(fmt.Sprintf("[%s]", i))
