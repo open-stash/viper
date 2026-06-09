@@ -17,6 +17,8 @@ redis:
 browserless:
   url: "https://production-sfo.browserless.io"
   token: "your_browserless_token"
+  render_wait_ms: 800           # settle delay after the wait condition before screenshot/text capture
+  nav_timeout_ms: 15000         # bound on goto; if networkIdle isn't reached we fall back to a load capture
 
 s3:
   region: "blr1"

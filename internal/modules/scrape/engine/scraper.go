@@ -39,11 +39,15 @@ func (s *Scraper) Scrape(ctx context.Context, targetURL string) (*domain.Scraped
 	if staticErr == nil { // TODO : refactor the nesting
 		eval = s.evaluateStatic(staticData)
 		if eval.ok {
-			// Try to fill missing image with browser screenshot (only if needed)
+			// Static text is good but the image is weak/missing — spin up the
+			// browser to grab a screenshot. Since the browser already loaded and
+			// rendered the page, take its textual data too: fill anything static
+			// missed and upgrade thin content. We don't blindly overwrite good
+			// readability text with the browser's noisier full-page dump.
 			if eval.needsScreenshot && s.browser != nil {
-				if bData, bErr := s.scrapeViaBrowser(ctx, targetURL); bErr == nil && bData.ImageURL != "" {
-					staticData.ImageURL = bData.ImageURL
-				} else if bErr != nil {
+				if bData, bErr := s.scrapeViaBrowser(ctx, targetURL); bErr == nil {
+					mergeTextual(staticData, bData)
+				} else {
 					log.Warn().Err(bErr).Str("url", targetURL).Msg("Browser screenshot failed")
 				}
 			}
@@ -80,4 +84,27 @@ func (s *Scraper) Scrape(ctx context.Context, targetURL string) (*domain.Scraped
 		eval.reason = "no usable content"
 	}
 	return nil, fmt.Errorf("static scrape insufficient: %s", eval.reason)
+}
+
+// mergeTextual folds browser-scraped data into the static result. Static (clean
+// go-readability output) wins for fields it already has; the browser fills the
+// gaps — its image, any missing title, and its text when static's was too thin
+// to be meaningful (e.g. a JS-rendered page that served little HTML to the GET).
+func mergeTextual(dst, src *domain.ScrapedData) {
+	if dst == nil || src == nil {
+		return
+	}
+	if dst.ImageURL == "" && src.ImageURL != "" {
+		dst.ImageURL = src.ImageURL
+	}
+	if strings.TrimSpace(dst.Title) == "" && strings.TrimSpace(src.Title) != "" {
+		dst.Title = src.Title
+	}
+	// Only let the browser's (noisier) full-page text in when static's content was
+	// below the meaningful threshold and the browser actually rendered more.
+	staticLen := len(strings.TrimSpace(dst.ContentText))
+	browserLen := len(strings.TrimSpace(src.ContentText))
+	if staticLen < minContentLen && browserLen > staticLen {
+		dst.ContentText = src.ContentText
+	}
 }

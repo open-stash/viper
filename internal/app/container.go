@@ -41,7 +41,7 @@ func NewContainer(ctx context.Context, cfg *config.Config) (*Container, error) {
 	}
 
 	ytS := youtube.NewClient(cfg.YouTube.APIKey)
-	browserClient := browserless.New(cfg.Browserless.URL, cfg.Browserless.Token)
+	browserClient := browserless.New(cfg.Browserless.URL, cfg.Browserless.Token, cfg.Browserless.RenderWaitMs, cfg.Browserless.NavTimeoutMs)
 	s3Client, err := s3.NewClient(ctx, cfg.S3)
 	if err != nil {
 		return nil, err

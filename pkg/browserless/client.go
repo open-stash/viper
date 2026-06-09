@@ -9,12 +9,26 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/rs/zerolog/log"
+)
+
+const (
+	// defaultRenderWaitMs is the settle delay after the wait condition is met and
+	// before capture, giving lazy images / late paints a moment to land.
+	defaultRenderWaitMs = 800
+	// defaultNavTimeoutMs bounds goto so a page that never reaches networkIdle
+	// (chat widgets, analytics polling, websockets) can't hang a worker for the
+	// browserless 30s default. After it, we fall back to a plain `load` capture.
+	defaultNavTimeoutMs = 15000
 )
 
 type Client struct {
-	endpoint string
-	token    string
-	client   *http.Client
+	endpoint     string
+	token        string
+	renderWaitMs int
+	navTimeoutMs int
+	client       *http.Client
 }
 
 type Result struct {
@@ -24,21 +38,57 @@ type Result struct {
 	Screenshot []byte
 }
 
-func New(endpoint string, token string) *Client {
+// New builds a browserless client.
+//   - renderWaitMs: settle delay applied after the wait condition before capture (<=0 ⇒ default).
+//   - navTimeoutMs: upper bound on goto's wait, after which we degrade to a `load` capture (<=0 ⇒ default).
+func New(endpoint, token string, renderWaitMs, navTimeoutMs int) *Client {
+	if renderWaitMs <= 0 {
+		renderWaitMs = defaultRenderWaitMs
+	}
+	if navTimeoutMs <= 0 {
+		navTimeoutMs = defaultNavTimeoutMs
+	}
 	return &Client{
-		endpoint: endpoint,
-		token:    token,
+		endpoint:     endpoint,
+		token:        token,
+		renderWaitMs: renderWaitMs,
+		navTimeoutMs: navTimeoutMs,
 		client: &http.Client{
 			Timeout: 60 * time.Second,
 		},
 	}
 }
 
+// Scrape renders the page and returns its title, text and a screenshot.
+//
+// Two-tier wait so we capture *rendered* content, not a loading spinner:
+//  1. goto(waitUntil: networkIdle) — the spinner exists while XHR/fetch are in
+//     flight, so "network idle" is the real "content has rendered" signal. Bounded
+//     by navTimeoutMs so a never-idle page can't hang the worker.
+//  2. If that errors/times out (the minority of pages that never go idle), retry
+//     once with waitUntil: load so we still return a rendered capture instead of
+//     failing outright.
 func (b *Client) Scrape(ctx context.Context, targetURL string) (*Result, error) {
+	res, err := b.capture(ctx, targetURL, "networkIdle")
+	if err != nil {
+		log.Warn().Err(err).Str("url", targetURL).Msg("networkIdle capture failed; retrying with waitUntil:load")
+		return b.capture(ctx, targetURL, "load")
+	}
+	return res, nil
+}
+
+// capture runs one BQL pass with the given goto wait condition.
+func (b *Client) capture(ctx context.Context, targetURL, waitUntil string) (*Result, error) {
+	// BrowserQL runs these operations in order: navigate (waiting for the chosen
+	// condition, bounded by timeout), settle briefly for final paint, then read
+	// text and take the screenshot.
 	query := `
 	mutation Scrape {
-	  goto(url: "%s") {
+	  goto(url: "%s", waitUntil: %s, timeout: %d) {
 		status
+		time
+	  }
+	  settle: waitForTimeout(time: %d) {
 		time
 	  }
 	  pageText: text {
@@ -53,7 +103,7 @@ func (b *Client) Scrape(ctx context.Context, targetURL string) (*Result, error) 
 	}`
 
 	payload := map[string]string{
-		"query": fmt.Sprintf(query, targetURL),
+		"query": fmt.Sprintf(query, targetURL, waitUntil, b.navTimeoutMs, b.renderWaitMs),
 	}
 	jsonPayload, _ := json.Marshal(payload)
 
@@ -92,7 +142,7 @@ func (b *Client) Scrape(ctx context.Context, targetURL string) (*Result, error) 
 				Base64 string `json:"base64"`
 			} `json:"shot"`
 		} `json:"data"`
-		Errors []interface{} `json:"errors"`
+		Errors []any `json:"errors"`
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&qlResp); err != nil {

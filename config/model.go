@@ -29,8 +29,10 @@ type RedisConfig struct {
 }
 
 type BrowserlessConfig struct {
-	URL   string `mapstructure:"url"`
-	Token string `mapstructure:"token"`
+	URL          string `mapstructure:"url"`
+	Token        string `mapstructure:"token"`
+	RenderWaitMs int    `mapstructure:"render_wait_ms"` // settle delay (ms) after the wait condition before capture; 0 = client default
+	NavTimeoutMs int    `mapstructure:"nav_timeout_ms"` // upper bound (ms) on goto; after it we fall back to a load capture; 0 = client default
 }
 
 type S3Config struct {
