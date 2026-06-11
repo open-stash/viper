@@ -94,8 +94,8 @@ func (b *Client) capture(ctx context.Context, targetURL, waitUntil string) (*Res
 	  pageText: text {
 		text
 	  }
-	  pageTitle: text(selector: "title") {
-		text
+	  pageTitle: title {
+		title
 	  }
 	  shot: screenshot(fullPage: false, type: jpeg, quality: 75) {
 		base64
@@ -136,7 +136,7 @@ func (b *Client) capture(ctx context.Context, targetURL, waitUntil string) (*Res
 				Text string `json:"text"`
 			} `json:"pageText"`
 			PageTitle struct {
-				Text string `json:"text"`
+				Title string `json:"title"`
 			} `json:"pageTitle"`
 			Shot struct {
 				Base64 string `json:"base64"`
@@ -157,7 +157,7 @@ func (b *Client) capture(ctx context.Context, targetURL, waitUntil string) (*Res
 	imgBytes, _ := base64.StdEncoding.DecodeString(qlResp.Data.Shot.Base64)
 
 	return &Result{
-		Title:       strings.TrimSpace(qlResp.Data.PageTitle.Text),
+		Title:       strings.TrimSpace(qlResp.Data.PageTitle.Title),
 		ContentText: qlResp.Data.PageText.Text,
 		Screenshot:  imgBytes,
 	}, nil
