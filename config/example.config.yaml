@@ -29,3 +29,6 @@ s3:
 
 youtube:
   api_key: "your_youtube_api_key"
+
+scrapingant:
+  api_key: "your_scrapingant_key"   # residential-proxy fallback (Reddit + last resort); empty = disabled

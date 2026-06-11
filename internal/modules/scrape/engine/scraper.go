@@ -16,14 +16,16 @@ type Scraper struct {
 	uploader Uploader
 	client   *http.Client
 	youtube  YouTube
+	proxy    ProxyFetcher
 }
 
-func New(b Browser, u Uploader, yt YouTube, h *http.Client) *Scraper {
+func New(b Browser, u Uploader, yt YouTube, proxy ProxyFetcher, h *http.Client) *Scraper {
 	return &Scraper{
 		client:   h,
 		browser:  b,
 		uploader: u,
 		youtube:  yt,
+		proxy:    proxy,
 	}
 }
 
@@ -41,6 +43,18 @@ func (s *Scraper) Scrape(ctx context.Context, targetURL string) (*domain.Scraped
 		} else {
 			log.Warn().Err(err).Str("url", targetURL).Msg("YouTube scrape failed; falling back to generic scrape")
 		}
+	}
+
+	// Reddit short-circuit. Reddit serves our datacenter IPs a "network security"
+	// block wall, so static + headless both fail — go straight to the residential
+	// proxy provider. On failure, fall through (the generic path will likely also
+	// hit the wall, but it's the safety net).
+	if s.proxy != nil && isRedditURL(targetURL) {
+		data, err := s.scrapeReddit(ctx, targetURL)
+		if err == nil {
+			return data, nil
+		}
+		log.Warn().Err(err).Str("url", targetURL).Msg("Reddit proxy fetch failed; falling back to generic scrape")
 	}
 
 	// 1) Static scrape first
@@ -77,6 +91,17 @@ func (s *Scraper) Scrape(ctx context.Context, targetURL string) (*domain.Scraped
 			return bData, nil
 		}
 		log.Warn().Err(bErr).Str("url", targetURL).Msg("Browser scraping failed")
+	}
+
+	// 2.5) Last resort: the proxy provider (datacenter + JS render). Reaches pages
+	// our own static+headless path can't (IP blocks, heavy anti-bot). Only hit when
+	// everything above failed, to keep proxy credits for when they're truly needed.
+	if s.proxy != nil {
+		data, err := s.scrapeViaProxy(ctx, targetURL, targetURL, false /*datacenter*/, true /*jsRender*/)
+		if err == nil {
+			return data, nil
+		}
+		log.Warn().Err(err).Str("url", targetURL).Msg("Proxy fallback failed")
 	}
 
 	// 3) If browser also failed, return best available result

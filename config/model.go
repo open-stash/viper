@@ -7,6 +7,7 @@ type Config struct {
 	Browserless BrowserlessConfig `mapstructure:"browserless"`
 	S3          S3Config          `mapstructure:"s3"`
 	YouTube     YouTubeConfig     `mapstructure:"youtube"`
+	ScrapingAnt ScrapingAntConfig `mapstructure:"scrapingant"`
 }
 
 type ServerConfig struct {
@@ -44,5 +45,11 @@ type S3Config struct {
 }
 
 type YouTubeConfig struct {
+	APIKey string `mapstructure:"api_key"`
+}
+
+// ScrapingAntConfig — the residential-proxy / JS-render fallback provider. Empty
+// api_key disables the Reddit path and the proxy last-resort fallback.
+type ScrapingAntConfig struct {
 	APIKey string `mapstructure:"api_key"`
 }

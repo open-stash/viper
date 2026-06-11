@@ -15,6 +15,14 @@ type Browser interface {
 	Scrape(ctx context.Context, targetURL string) (*BrowserResult, error)
 }
 
+// ProxyFetcher fetches a page's rendered HTML through an external proxy provider
+// (ScrapingAnt). Used for targets our own static+browser path can't reach —
+// residential selects residential IPs (for IP-blocks like Reddit), jsRender runs
+// a real browser (for JS-heavy pages).
+type ProxyFetcher interface {
+	Fetch(ctx context.Context, url string, residential, jsRender bool) ([]byte, error)
+}
+
 type Uploader interface {
 	Upload(ctx context.Context, key string, data []byte, contentType string) (string, error)
 }

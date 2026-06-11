@@ -6,6 +6,7 @@ import (
 
 	"github.com/open-stash/viper/config"
 	infraBrowserless "github.com/open-stash/viper/internal/infra/browserless"
+	infraScrapingAnt "github.com/open-stash/viper/internal/infra/scrapingant"
 	infraYouTube "github.com/open-stash/viper/internal/infra/youtube"
 	"github.com/open-stash/viper/internal/modules/scrape"
 	"github.com/open-stash/viper/internal/modules/scrape/engine"
@@ -13,8 +14,10 @@ import (
 	"github.com/open-stash/viper/pkg/mq"
 	"github.com/open-stash/viper/pkg/redis"
 	"github.com/open-stash/viper/pkg/s3"
+	"github.com/open-stash/viper/pkg/scrapingant"
 	"github.com/open-stash/viper/pkg/youtube"
 	"github.com/rabbitmq/amqp091-go"
+	"github.com/rs/zerolog/log"
 )
 
 type Container struct {
@@ -50,7 +53,17 @@ func NewContainer(ctx context.Context, cfg *config.Config) (*Container, error) {
 	browserAdapter := infraBrowserless.NewAdapter(browserClient)
 	youtubeAdapter := infraYouTube.NewAdapter(ytS)
 
-	scrapS := engine.New(browserAdapter, s3Client, youtubeAdapter, &http.Client{})
+	// Optional residential-proxy fallback (Reddit + last resort). Nil when no key
+	// is configured, in which case the engine just skips those paths.
+	var proxyFetcher engine.ProxyFetcher
+	if cfg.ScrapingAnt.APIKey != "" {
+		proxyFetcher = infraScrapingAnt.NewAdapter(scrapingant.New(cfg.ScrapingAnt.APIKey))
+		log.Info().Msg("✅ ScrapingAnt proxy fallback enabled (Reddit + last resort)")
+	} else {
+		log.Info().Msg("ℹ️  ScrapingAnt not configured — Reddit & proxy fallback disabled")
+	}
+
+	scrapS := engine.New(browserAdapter, s3Client, youtubeAdapter, proxyFetcher, &http.Client{})
 
 	scrapeWorker := scrape.NewScrapeWorker(rds, scrapS)
 	scrapeService := scrape.NewService(rds, pbh)

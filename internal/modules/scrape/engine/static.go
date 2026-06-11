@@ -19,7 +19,13 @@ func (s *Scraper) scrapeStatic(ctx context.Context, targetURL string) (*domain.S
 	if err != nil {
 		return nil, err
 	}
+	return s.parseHTML(ctx, targetURL, htmlBytes)
+}
 
+// parseHTML extracts a ScrapedData from a page's HTML using go-readability (clean
+// main content) + goquery (meta tags, images). Shared by the static fetch and the
+// proxy-provider fallback so both produce identically-shaped, clean text.
+func (s *Scraper) parseHTML(ctx context.Context, targetURL string, htmlBytes []byte) (*domain.ScrapedData, error) {
 	result := &domain.ScrapedData{URL: targetURL}
 	var mu sync.Mutex
 	var wg sync.WaitGroup
