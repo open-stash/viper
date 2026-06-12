@@ -12,6 +12,11 @@ type ScrapedData struct {
 	ContentText string `json:"content_text"`
 	Author      string `json:"author"`
 	PublishedAt string `json:"published_at"`
+
+	// RenderHint is set by the static parser when the page looks like a JS app shell
+	// whose real content didn't make it into the static HTML (even after structured-data
+	// recovery). The orchestrator uses it to force a headless render. Internal-only.
+	RenderHint bool `json:"-"`
 }
 
 type JobStatus string

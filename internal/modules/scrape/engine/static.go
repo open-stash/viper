@@ -7,12 +7,17 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 
 	domain "github.com/open-stash/viper/internal/domain/scrape"
 	"github.com/PuerkitoBio/goquery"
 	"github.com/go-shiori/go-readability"
 )
+
+// richContentLen is the bar for content we consider "complete enough" to trust without a
+// JS render. Below it on an SPA shell, we set RenderHint so the orchestrator renders.
+const richContentLen = 500
 
 func (s *Scraper) scrapeStatic(ctx context.Context, targetURL string) (*domain.ScrapedData, error) {
 	htmlBytes, err := s.fetchHTML(ctx, targetURL)
@@ -30,15 +35,16 @@ func (s *Scraper) parseHTML(ctx context.Context, targetURL string, htmlBytes []b
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	var readabilityErr, metaErr error
+	var readabilityText string
+	var structured structuredData
 
-	wg.Add(2)
+	wg.Add(3)
 
-	// Goroutine 1: Parse with go-readability for main content
+	// Goroutine 1: go-readability — clean main *article* content (best for articles/blogs).
 	go func() {
 		defer wg.Done()
 
-		r := bytes.NewReader(htmlBytes)
-		parsed, err := readability.FromReader(r, mustParseURL(targetURL))
+		parsed, err := readability.FromReader(bytes.NewReader(htmlBytes), mustParseURL(targetURL))
 		if err != nil {
 			readabilityErr = err
 			return
@@ -46,7 +52,7 @@ func (s *Scraper) parseHTML(ctx context.Context, targetURL string, htmlBytes []b
 
 		mu.Lock()
 		defer mu.Unlock()
-		result.ContentText = parsed.TextContent
+		readabilityText = parsed.TextContent
 		result.Author = parsed.Byline
 		if parsed.Title != "" {
 			result.Title = parsed.Title
@@ -56,23 +62,23 @@ func (s *Scraper) parseHTML(ctx context.Context, targetURL string, htmlBytes []b
 		}
 	}()
 
-	// Goroutine 2: Parse with goquery for meta tags and fallback images
+	// Goroutine 2: goquery — meta tags, image, AND embedded structured data (JSON-LD,
+	// __NEXT_DATA__, application/json) which carries SPA content readability discards.
 	go func() {
 		defer wg.Done()
 
-		r := bytes.NewReader(htmlBytes)
-		doc, err := goquery.NewDocumentFromReader(r)
+		doc, err := goquery.NewDocumentFromReader(bytes.NewReader(htmlBytes))
 		if err != nil {
 			metaErr = err
 			return
 		}
+		sd := extractStructured(doc)
 
 		mu.Lock()
 		defer mu.Unlock()
-
+		structured = sd
 		result.ImageURL = s.extractImage(doc, targetURL)
 		result.Description = s.findMeta(doc, "og:description", "twitter:description", "description")
-
 		if result.Title == "" {
 			result.Title = s.findMeta(doc, "og:title", "twitter:title", "title")
 		}
@@ -81,29 +87,92 @@ func (s *Scraper) parseHTML(ctx context.Context, targetURL string, htmlBytes []b
 		}
 	}()
 
-	// Wait for both goroutines with context cancellation support
+	// Goroutine 3: full-text fallback for non-article pages (galleries, dirs, dashboards).
+	var fullText string
+	go func() {
+		defer wg.Done()
+		ft := extractFullText(htmlBytes)
+		mu.Lock()
+		defer mu.Unlock()
+		fullText = ft
+	}()
+
+	// Wait with context-cancellation support.
 	done := make(chan struct{})
 	go func() {
 		wg.Wait()
 		close(done)
 	}()
-
 	select {
 	case <-done:
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
 
-	// Fail only if both parsers failed
 	if readabilityErr != nil && metaErr != nil {
 		return nil, fmt.Errorf("both parsers failed: readability=%v, meta=%v", readabilityErr, metaErr)
 	}
 
+	// Pick the richest available content + decide whether a JS render is still needed.
+	spa := isSPAShell(htmlBytes)
+	result.ContentText = chooseContent(readabilityText, structured.text, fullText, spa)
+	if result.Description == "" && structured.description != "" {
+		result.Description = structured.description
+	}
+	if result.Title == "" && structured.title != "" {
+		result.Title = structured.title
+	}
+	// Thin content behind an app shell ⇒ the real content is client-rendered: ask for a
+	// headless render. Rich recovered content (e.g. from __NEXT_DATA__) clears this.
+	result.RenderHint = spa && len(strings.TrimSpace(result.ContentText)) < richContentLen
+
 	if result.ContentText == "" && result.Title == "" {
 		return result, fmt.Errorf("no meaningful content extracted from %s", targetURL)
 	}
-
 	return result, nil
+}
+
+// chooseContent merges the three extractors. go-readability is cleanest, so it wins when
+// it produced rich content AND it isn't a wildly thinner slice than the alternatives. On
+// an SPA shell readability often grabs the wrong fragment (a footer/FAQ), so we trust the
+// richest of structured/full-text instead.
+func chooseContent(readabilityText, structuredText, fullText string, spa bool) string {
+	rt := strings.TrimSpace(readabilityText)
+	best := rt
+	for _, c := range []string{strings.TrimSpace(structuredText), strings.TrimSpace(fullText)} {
+		if len(c) > len(best) {
+			best = c
+		}
+	}
+	if spa {
+		return best // don't trust readability's fragment on an app shell
+	}
+	// Non-SPA: prefer clean readability when it's rich and not dwarfed by the alternatives.
+	if len(rt) >= richContentLen && len(rt)*2 >= len(best) {
+		return rt
+	}
+	return best
+}
+
+// isSPAShell reports whether the HTML looks like a JS app shell (Next.js / generic SPA
+// mount point) whose body content is hydrated client-side.
+func isSPAShell(htmlBytes []byte) bool {
+	h := htmlBytes
+	if len(h) > 200*1024 {
+		h = h[:200*1024] // markers live in the head/early body
+	}
+	lower := bytes.ToLower(h)
+	for _, marker := range [][]byte{
+		[]byte("__next_data__"),
+		[]byte(`id="__next"`), []byte("id=__next"),
+		[]byte(`id="root"`), []byte("id=root"),
+		[]byte("data-reactroot"), []byte("ng-version"), []byte("__nuxt__"),
+	} {
+		if bytes.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Scraper) fetchHTML(ctx context.Context, urlStr string) ([]byte, error) {

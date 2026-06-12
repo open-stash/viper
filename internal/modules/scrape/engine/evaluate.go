@@ -28,7 +28,11 @@ func (s *Scraper) evaluateStatic(d *domain.ScrapedData) staticEval {
 	descLen := len(strings.TrimSpace(d.Description))
 	descOK := descLen >= minDescriptionLen
 
-	dataOK := titleOK && (contentOK || descOK)
+	// RenderHint (set by the static parser) means: app shell whose real content is
+	// client-rendered and didn't survive static extraction. Force escalation to the
+	// headless browser regardless of how much boilerplate prose we scraped — this is the
+	// completeness check that length alone misses (a JS gallery with a chatty footer).
+	dataOK := titleOK && (contentOK || descOK) && !d.RenderHint
 
 	imgOK := d.ImageURL != "" && !s.isIconOrLogo(d.ImageURL)
 	needsScreenshot := !imgOK
@@ -39,6 +43,9 @@ func (s *Scraper) evaluateStatic(d *domain.ScrapedData) staticEval {
 	}
 	if !contentOK && !descOK {
 		reasons = append(reasons, "missing content/description")
+	}
+	if d.RenderHint {
+		reasons = append(reasons, "app shell — content client-rendered")
 	}
 	if !imgOK {
 		reasons = append(reasons, "missing/weak image")
