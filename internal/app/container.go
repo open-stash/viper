@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"net/http"
 
 	"github.com/open-stash/viper/config"
 	infraBrowserless "github.com/open-stash/viper/internal/infra/browserless"
@@ -63,7 +62,7 @@ func NewContainer(ctx context.Context, cfg *config.Config) (*Container, error) {
 		log.Info().Msg("ℹ️  ScrapingAnt not configured — Reddit & proxy fallback disabled")
 	}
 
-	scrapS := engine.New(browserAdapter, s3Client, youtubeAdapter, proxyFetcher, &http.Client{})
+	scrapS := engine.New(browserAdapter, s3Client, youtubeAdapter, proxyFetcher)
 
 	scrapeWorker := scrape.NewScrapeWorker(rds, scrapS)
 	scrapeService := scrape.NewService(rds, pbh)

@@ -10,8 +10,8 @@ import (
 // structuredData is content recovered from a page's embedded machine-readable data:
 // JSON-LD (schema.org), Next.js __NEXT_DATA__, and generic application/json blobs.
 // JS-rendered pages (galleries, dashboards, SPAs) frequently ship their *real* content
-// as embedded JSON that go-readability — an article extractor — silently discards. This
-// recovers it without paying for a headless render.
+// as embedded JSON that a plain text pass would miss. This recovers it from the HTML the
+// proxy returns, complementing the full-text extractor.
 type structuredData struct {
 	title       string
 	description string

@@ -11,10 +11,9 @@ import (
 var wsRe = regexp.MustCompile(`[ \t]+`)
 var nlRe = regexp.MustCompile(`\n{3,}`)
 
-// extractFullText is a Trafilatura-style fallback: strip boilerplate/markup and return
-// the page's visible text. Used when go-readability (article-centric) returns little —
-// e.g. galleries, directories, product pages, dashboards — where the valuable content
-// isn't a single "article" block readability looks for.
+// extractFullText is a Trafilatura-style extractor: strip boilerplate/markup and return
+// the page's visible text. Used by the proxy parser to pull the body out of fetched HTML
+// (galleries, directories, articles, product pages alike).
 //
 // Takes raw HTML (not a shared *goquery.Document) because it destructively removes nodes.
 func extractFullText(htmlBytes []byte) string {

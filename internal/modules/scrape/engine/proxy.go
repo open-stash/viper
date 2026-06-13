@@ -20,7 +20,7 @@ func isRedditURL(rawURL string) bool {
 }
 
 // toOldReddit rewrites reddit.com hosts to old.reddit.com, whose server-rendered
-// HTML is far friendlier to readability (no JS needed). Non-reddit.com hosts
+// HTML is far friendlier to parse (no JS needed). Non-reddit.com hosts
 // (e.g. the redd.it shortener) pass through unchanged.
 func toOldReddit(rawURL string) string {
 	u, err := url.Parse(rawURL)
